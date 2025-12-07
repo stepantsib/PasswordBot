@@ -1,43 +1,62 @@
 package org.example;
 
 import java.security.SecureRandom;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Класс с логикой обработки команд и генерацией пароля
- */
 public class PasswordLogic {
 
-    /**
-     * Генератор случайных чисел для создания паролей
-     */
+    private static final int MIN_LENGTH = 6;
+    private static final int MAX_LENGTH = 64;
+    private static final int STATE_NONE = 0;
+    private static final int STATE_WAIT_LENGTH = 1;
+    private static final int STATE_ASK_DIGITS = 2;
+    private static final int STATE_ASK_UPPER = 3;
+    private static final int STATE_ASK_LOWER = 4;
+    private static final int STATE_ASK_SPECIAL = 5;
+    private static final String DIGITS = "0123456789";
+    private static final String UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    private static final String LOWER = "abcdefghijklmnopqrstuvwxyz";
+    private static final String SPECIAL = "!@#$%^&*()_-+=<>?/{}[]";
+
     private final SecureRandom random = new SecureRandom();
+    private final Map<Long, UserSettings> userSettings = new HashMap<>();
 
-    /**
-     * Обрабатывает сообщение пользователя и выполняет команду /password
-     */
-    public String handleMessage(String text) {
-        text = text.trim();
-
-        if (!text.equals("/password")) {
-            return "Используй команду /password для генерации пароля";
-        }
-
-        return generatePassword(10);
+    private static class UserSettings {
+        int state = STATE_NONE;
     }
 
-    /**
-     * Создаёт пароль указанной длины из случайных символов
-     */
-    private String generatePassword(int length) {
-        String ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_-+=<>?/{}~";
+    public String handleMessage(long chatId, String text) {
+        UserSettings settings = getUserSettings(chatId);
+        int state = settings.state;
 
-        String pwd = "";
-
-        for (int i = 0; i < length; i++) {
-            int idx = random.nextInt(ALPHABET.length());
-            pwd = pwd + ALPHABET.charAt(idx);
+        if (state != STATE_NONE && !text.equals("/settings") && !text.equals("/password")) {
+            return handleSettingsStep(chatId, text, settings);
         }
 
-        return pwd;
+        switch (text) {
+            case "/settings":
+                settings.state = STATE_WAIT_LENGTH;
+                return "Введите длину пароля (" + MIN_LENGTH + "–" + MAX_LENGTH + "):";
+
+            case "/password":
+                return generatePassword(settings);
+
+            default:
+                return "Неизвестная команда. Используйте /settings или /password";
+        }
     }
+
+    private String handleSettingsStep(long chatId, String text, UserSettings settings) {
+        return null;
+    }
+
+    private String generatePassword(UserSettings settings) {
+        return null;
+    }
+
+    private UserSettings getUserSettings(long chatId) {
+        return userSettings.computeIfAbsent(chatId, k -> new UserSettings());
+    }
+
 }
