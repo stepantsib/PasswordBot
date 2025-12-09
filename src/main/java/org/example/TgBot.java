@@ -26,6 +26,7 @@ public class TgBot {
         this.logic = new PasswordLogic();
     }
 
+
     /**
      * Запускает получение обновлений и обработку входящих сообщений
      */
@@ -35,10 +36,14 @@ public class TgBot {
                 Message message = update.message();
                 String messageText = message.text();
                 long chatId = message.chat().id();
-                String replyText = logic.handleMessage(messageText);
-
-                SendMessage response = new SendMessage(chatId, replyText);
-                bot.execute(response);
+                String replyText = logic.handleMessage(
+                        chatId,
+                        messageText
+                );
+                if (replyText != null && !replyText.isBlank()) {
+                    SendMessage response = new SendMessage(chatId, replyText);
+                    bot.execute(response);
+                }
             }
             return UpdatesListener.CONFIRMED_UPDATES_ALL;
         });
