@@ -164,8 +164,11 @@ public class PasswordLogic {
 
             case STATE_ASK_SPECIAL:
                 settings.special = value;
+
                 settings.state = STATE_NONE;
-                return "Настройки сохранены! Длина = " + settings.length;
+                return "Новые параметры. Длина = " + settings.length + "; наличие цифр "
+                        + settings.digits + "; наличие заглавных букв " + settings.upper + "; наличие строчных букв "
+                        + settings.lower + "; наличие спецсимволов " + settings.special;
 
             default:
                 settings.state = STATE_NONE;
