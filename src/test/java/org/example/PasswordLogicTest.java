@@ -127,7 +127,7 @@ public class PasswordLogicTest {
 
         // Отключаем специальные
         String step5 = logic.handleMessage(44444, "-");
-        Assertions.assertEquals("Настройки сохранены! Длина = 8", step5);
+        Assertions.assertEquals("Новые параметры. Длина = 8; наличие цифр false; наличие заглавных букв true; наличие строчных букв true; наличие спецсимволов false", step5);
 
         // Генерируем пароль с новыми настройками
         String result = logic.handleMessage(44444, "/password");
