@@ -206,9 +206,10 @@ public class PasswordLogic {
                 if (ok == null) return "Ответьте + или -";
 
                 if (ok) {
-                    database.delete(chatId, settings.tmpService);
+                    String serviceToDelete = settings.tmpService;
+                    database.delete(chatId, serviceToDelete);
                     resetManager(settings);
-                    return "Данные для \"" + settings.tmpService + "\" удалены";
+                    return "Данные для \"" + serviceToDelete + "\" удалены";
                 }
 
                 resetManager(settings);
