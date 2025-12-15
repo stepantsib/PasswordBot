@@ -2,10 +2,15 @@ package org.example;
 
 import java.security.SecureRandom;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Класс с логикой обработки команд и генерацией пароля
+ * Класс с логикой обработки команд тг бота.
+ * Реализует:
+ * настройку генерации паролей через диалог (/settings)
+ * генерацию паролей (/password)
+ * менеджер паролей пользователя (/add, /list, /get, /delete, /change)
  */
 public class PasswordLogic {
 
@@ -33,6 +38,30 @@ public class PasswordLogic {
     /** Состояние: вопрос об использовании специальных символов */
     private static final int STATE_ASK_SPECIAL = 5;
 
+    /** Состояние: нет активного диалога менеджера паролей */
+    private static final int PM_NONE = 0;
+
+    /** Состояние: ожидание ввода названия сервиса при добавлении */
+    private static final int PM_ADD_WAIT_SERVICE = 1;
+
+    /** Состояние: ожидание ввода логина/email при добавлении */
+    private static final int PM_ADD_WAIT_LOGIN = 2;
+
+    /** Состояние: выбор способа создания пароля при добавлении */
+    private static final int PM_ADD_WAIT_METHOD = 3;
+
+    /** Состояние: ожидание ручного ввода пароля при добавлении */
+    private static final int PM_ADD_WAIT_PASSWORD = 4;
+
+    /** Состояние: подтверждение удаления записи */
+    private static final int PM_DELETE_CONFIRM = 5;
+
+    /** Состояние: выбор способа изменения пароля */
+    private static final int PM_CHANGE_WAIT_METHOD = 6;
+
+    /** Состояние: ожидание ручного ввода нового пароля */
+    private static final int PM_CHANGE_WAIT_PASSWORD = 7;
+
     /** Строка с цифрами для генерации пароля */
     private static final String DIGITS = "0123456789";
 
@@ -45,130 +74,227 @@ public class PasswordLogic {
     /** Строка со специальными символами для генерации пароля */
     private static final String SPECIAL = "!@#$%^&*()_-+=<>?/{}[]";
 
-    /**
-     * Генератор случайных чисел для создания паролей
-     */
+    /** Генератор случайных чисел */
     private final SecureRandom random = new SecureRandom();
 
-    /** Словарь для хранения настроек пользователей по их ID */
+    /** Настройки пользователей и состояния диалогов */
     private final Map<Long, UserSettings> userSettings = new HashMap<>();
 
+    /** База данных для хранения сервисов, логинов и паролей */
+    private final PasswordDatabase database = new PasswordDatabase();
+
+
     /**
-     * Внутренний класс для хранения настроек одного пользователя.
-     * Содержит параметры генерации пароля и состояние диалога.
+     * Настройки одного пользователя и состояния диалогов.
      */
     private class UserSettings {
-        /** Длина генерируемого пароля */
         int length = 10;
-
-        /** Флаг использования цифр в пароле (по умолчанию true) */
         boolean digits = true;
-
-        /** Флаг использования заглавных букв в пароле (по умолчанию true) */
         boolean upper = true;
-
-        /** Флаг использования строчных букв в пароле (по умолчанию true) */
         boolean lower = true;
-
-        /** Флаг использования специальных символов в пароле (по умолчанию true) */
         boolean special = true;
 
-        /** Текущее состояние диалога с пользователем */
         int state = STATE_NONE;
+        int pmState = PM_NONE;
+
+        String tmpService;
+        String tmpLogin;
     }
 
     /**
-     Основной метод обработки сообщений от пользователя.
-     Определяет команду и направляет на соответствующую обработку.
-     Возвращает ответное сообщение для пользователя
+     * Основной метод обработки сообщений пользователя.
      */
     public String handleMessage(long chatId, String text) {
         text = text.trim();
-
         UserSettings settings = getUserSettings(chatId);
-        int state = settings.state;
 
-        if (state != STATE_NONE && !text.equals("/settings") && !text.equals("/password")) {
-            return handleSettingsStep(chatId, text, settings);
+        if (settings.pmState != PM_NONE && !text.equals("/settings") && !text.equals("/password")) {
+            return handleManagerStep(chatId, text, settings);
         }
 
-        switch (text) {
+        if (settings.state != STATE_NONE && !text.equals("/settings") && !text.equals("/password")) {
+            return handleSettingsStep(text, settings);
+        }
+
+        String cmd = first(text);
+        String arg = second(text);
+
+        switch (cmd) {
+            case "/start":
+                return """
+                        Команды:
+                        /settings — настройки генерации
+                        /password — сгенерировать пароль
+
+                        /add — добавить запись
+                        /list — список сервисов
+                        /get <сервис> — логин и пароль
+                        /delete <сервис> — удалить (+/-)
+                        /change <сервис> — изменить пароль
+                        """;
+
             case "/settings":
+                settings.pmState = PM_NONE;
                 settings.state = STATE_WAIT_LENGTH;
                 return "Введите длину пароля (" + MIN_LENGTH + "–" + MAX_LENGTH + "):";
 
             case "/password":
-                return generatePassword(settings);
+                settings.pmState = PM_NONE;
+                return "Ваш пароль: " + generatePasswordRaw(settings);
+
+            case "/add":
+                settings.pmState = PM_ADD_WAIT_SERVICE;
+                return "Введите название сервиса:";
+
+            case "/list":
+                return listServices(chatId);
+
+            case "/get":
+                return handleGet(chatId, arg);
+
+            case "/delete":
+                return handleDelete(chatId, arg, settings);
+
+            case "/change":
+                return handleChange(chatId, arg, settings);
 
             default:
-                return "Неизвестная команда. Используйте /settings или /password";
+                return "Неизвестная команда. Напишите /start";
         }
     }
 
     /**
-     Обрабатывает шаг настройки пароля в диалоговом режиме.
-     Определяет текущее состояние и вызывает соответствующий обработчик.
-     Возвращает ответное сообщение
+     * Обрабатывает шаги диалога менеджера паролей.
      */
-    private String handleSettingsStep(long chatId, String text, UserSettings settings) {
-        switch (settings.state) {
-            case STATE_WAIT_LENGTH:
-                return handleLengthInput(text, settings);
+    private String handleManagerStep(long chatId, String text, UserSettings settings) {
+        switch (settings.pmState) {
+            case PM_ADD_WAIT_SERVICE:
+                settings.tmpService = text;
+                settings.pmState = PM_ADD_WAIT_LOGIN;
+                return "Введите логин/email:";
 
-            case STATE_ASK_DIGITS:
-            case STATE_ASK_UPPER:
-            case STATE_ASK_LOWER:
-            case STATE_ASK_SPECIAL:
-                return handleYesNoInput(text, settings);
+            case PM_ADD_WAIT_LOGIN:
+                settings.tmpLogin = text;
+                settings.pmState = PM_ADD_WAIT_METHOD;
+                return """
+                        Выберите способ создания пароля:
+                        1. Автоматическая генерация
+                        2. Ввод вручную
+                        """;
+
+            case PM_ADD_WAIT_METHOD:
+                if (text.equals("1")) {
+                    String pass = generatePasswordRaw(settings);
+                    database.save(chatId, settings.tmpService, settings.tmpLogin, pass);
+                    String service = settings.tmpService;
+                    resetManager(settings);
+                    return "Пароль для " + service + ": " + pass + "\nДанные сохранены";
+                }
+                if (text.equals("2")) {
+                    settings.pmState = PM_ADD_WAIT_PASSWORD;
+                    return "Введите пароль:";
+                }
+                return "Введите 1 или 2";
+
+            case PM_ADD_WAIT_PASSWORD:
+                database.save(chatId, settings.tmpService, settings.tmpLogin, text);
+                resetManager(settings);
+                return "Данные сохранены";
+
+            case PM_DELETE_CONFIRM: {
+                Boolean ok = parseYesNo(text);
+                if (ok == null) return "Ответьте + или -";
+
+                if (ok) {
+                    String serviceToDelete = settings.tmpService;
+                    database.delete(chatId, serviceToDelete);
+                    resetManager(settings);
+                    return "Данные для \"" + serviceToDelete + "\" удалены";
+                }
+
+                resetManager(settings);
+                return "Удаление отменено";
+            }
+
+            case PM_CHANGE_WAIT_METHOD:
+                if (text.equals("1")) {
+                    PasswordDatabase.Entry e = database.find(chatId, settings.tmpService);
+                    if (e == null) {
+                        resetManager(settings);
+                        return "Сервис \"" + settings.tmpService + "\" не найден.\nИспользуйте /list.";
+                    }
+                    String newPass = generatePasswordRaw(settings);
+                    database.save(chatId, e.getService(), e.getLogin(), newPass);
+                    String service = e.getService();
+                    resetManager(settings);
+                    return "Новый пароль для " + service + ": " + newPass + "\nПароль изменён";
+                }
+                if (text.equals("2")) {
+                    settings.pmState = PM_CHANGE_WAIT_PASSWORD;
+                    return "Введите новый пароль:";
+                }
+                return "Введите 1 или 2";
+
+            case PM_CHANGE_WAIT_PASSWORD: {
+                PasswordDatabase.Entry e = database.find(chatId, settings.tmpService);
+                if (e == null) {
+                    resetManager(settings);
+                    return "Сервис \"" + settings.tmpService + "\" не найден.\nИспользуйте /list.";
+                }
+                database.save(chatId, e.getService(), e.getLogin(), text);
+                resetManager(settings);
+                return "Пароль для " + e.getService() + " изменён";
+            }
 
             default:
-                settings.state = STATE_NONE;
+                resetManager(settings);
                 return null;
         }
     }
 
     /**
-     Обрабатывает ввод длины пароля от пользователя.
-     Устанавливает длину и переходит к следующему вопросу.
-     Возвращает следующий вопрос для пользователя
+     * Обрабатывает шаг настройки генерации пароля.
      */
-    private String handleLengthInput(String text, UserSettings settings) {
-        settings.length = Integer.parseInt(text);
-        settings.state = STATE_ASK_DIGITS;
-        return "Использовать цифры? (+ / -)";
-    }
-
-    /**
-     Обрабатывает ответы "да/нет" на вопросы о параметрах пароля.
-     Обновляет соответствующий флаг и задает следующий вопрос.
-     Возвращает следующий вопрос или сообщение об окончании настройки
-     */
-    private String handleYesNoInput(String text, UserSettings settings) {
-        Boolean value = parseYesNo(text);
+    private String handleSettingsStep(String text, UserSettings settings) {
+        Boolean v;
 
         switch (settings.state) {
+            case STATE_WAIT_LENGTH:
+                settings.length = Integer.parseInt(text);
+                settings.state = STATE_ASK_DIGITS;
+                return "Использовать цифры? (+ / -)";
+
             case STATE_ASK_DIGITS:
-                settings.digits = value;
+                v = parseYesNo(text);
+                if (v == null) return "Ответьте + или -";
+                settings.digits = v;
                 settings.state = STATE_ASK_UPPER;
-                return "Использовать прописные буквы? (+ / -)";
+                return "Использовать заглавные буквы? (+ / -)";
 
             case STATE_ASK_UPPER:
-                settings.upper = value;
+                v = parseYesNo(text);
+                if (v == null) return "Ответьте + или -";
+                settings.upper = v;
                 settings.state = STATE_ASK_LOWER;
                 return "Использовать строчные буквы? (+ / -)";
 
             case STATE_ASK_LOWER:
-                settings.lower = value;
+                v = parseYesNo(text);
+                if (v == null) return "Ответьте + или -";
+                settings.lower = v;
                 settings.state = STATE_ASK_SPECIAL;
                 return "Использовать специальные символы? (+ / -)";
 
             case STATE_ASK_SPECIAL:
-                settings.special = value;
-
+                v = parseYesNo(text);
+                if (v == null) return "Ответьте + или -";
+                settings.special = v;
                 settings.state = STATE_NONE;
-                return "Новые параметры. Длина = " + settings.length + "; наличие цифр "
-                        + settings.digits + "; наличие заглавных букв " + settings.upper + "; наличие строчных букв "
-                        + settings.lower + "; наличие спецсимволов " + settings.special;
+                return "Новые параметры. Длина = " + settings.length
+                        + "; наличие цифр " + settings.digits
+                        + "; наличие заглавных букв " + settings.upper
+                        + "; наличие строчных букв " + settings.lower
+                        + "; наличие спецсимволов " + settings.special;
 
             default:
                 settings.state = STATE_NONE;
@@ -176,31 +302,78 @@ public class PasswordLogic {
         }
     }
 
-    /**
-     Генерирует пароль на основе текущих настроек пользователя.
-     */
-    private String generatePassword(UserSettings settings) {
+    /** Команда /get — показать логин и пароль сервиса. */
+    private String handleGet(long chatId, String service) {
+        if (service == null) return "Использование: /get <сервис>";
+        PasswordDatabase.Entry e = database.find(chatId, service);
+        if (e == null) return "Сервис не найден";
+        return e.getService() + ":\nЛогин: " + e.getLogin() + "\nПароль: " + e.getPassword();
+    }
 
+    /** Команда /delete — запрос подтверждения удаления. */
+    private String handleDelete(long chatId, String service, UserSettings settings) {
+        if (service == null) return "Использование: /delete <сервис>";
+        PasswordDatabase.Entry e = database.find(chatId, service);
+        if (e == null) return "Сервис не найден";
+        settings.tmpService = e.getService();
+        settings.pmState = PM_DELETE_CONFIRM;
+        return "Удалить данные для \"" + e.getService() + "\"? (+ / -)";
+    }
+
+    /** Команда /change — запуск процесса изменения пароля. */
+    private String handleChange(long chatId, String service, UserSettings settings) {
+        if (service == null) return "Использование: /change <сервис>";
+
+        PasswordDatabase.Entry e = database.find(chatId, service);
+        if (e == null) {
+            return "Сервис \"" + service + "\" не найден.\nИспользуйте /list.";
+        }
+
+        settings.tmpService = e.getService();
+        settings.pmState = PM_CHANGE_WAIT_METHOD;
+
+        return "Текущий логин для " + e.getService() + ": " + e.getLogin() + "\n"
+                + "Выберите способ создания нового пароля:\n"
+                + "1. Автоматическая генерация\n"
+                + "2. Ввод вручную";
+    }
+
+    /** Генерация пароля по текущим настройкам. */
+    private String generatePasswordRaw(UserSettings settings) {
         StringBuilder alphabet = new StringBuilder();
         if (settings.digits) alphabet.append(DIGITS);
         if (settings.upper) alphabet.append(UPPER);
         if (settings.lower) alphabet.append(LOWER);
         if (settings.special) alphabet.append(SPECIAL);
 
-
         String chars = alphabet.toString();
-        StringBuilder password = new StringBuilder();
+        StringBuilder p = new StringBuilder();
         for (int i = 0; i < settings.length; i++) {
-            password.append(chars.charAt(random.nextInt(chars.length())));
+            p.append(chars.charAt(random.nextInt(chars.length())));
         }
-
-        return "Ваш пароль: " + password;
+        return p.toString();
     }
 
-    /**
-     Получает настройки пользователя по его ID.
-     Возвращает объект с настройками пользователя
-     */
+    /** Список сервисов пользователя. */
+    private String listServices(long chatId) {
+        List<String> list = database.listServices(chatId);
+        if (list.isEmpty()) return "У вас пока нет сервисов";
+
+        StringBuilder sb = new StringBuilder("Ваши сервисы (всего: " + list.size() + "):\n");
+        for (int i = 0; i < list.size(); i++) {
+            sb.append(i + 1).append(". ").append(list.get(i)).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    /** Сброс состояния менеджера паролей. */
+    private void resetManager(UserSettings settings) {
+        settings.pmState = PM_NONE;
+        settings.tmpService = null;
+        settings.tmpLogin = null;
+    }
+
+    /** Получение настроек пользователя. */
     private UserSettings getUserSettings(long chatId) {
         return userSettings.computeIfAbsent(chatId, k -> new UserSettings());
     }
@@ -216,5 +389,18 @@ public class PasswordLogic {
             return false;
         }
         return null;
+    }
+    /** Возвращает команду. */
+    private String first(String t) {
+        int i = t.indexOf(' ');
+        return i == -1 ? t : t.substring(0, i);
+    }
+
+    /** Возвращает аргумент команды. */
+    private String second(String t) {
+        int i = t.indexOf(' ');
+        if (i == -1) return null;
+        String s = t.substring(i + 1).trim();
+        return s.isEmpty() ? null : s;
     }
 }
