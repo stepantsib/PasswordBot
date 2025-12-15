@@ -27,7 +27,7 @@ target/
 .settings
 .springBeans
 .sts4-cache
-
+.db
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
