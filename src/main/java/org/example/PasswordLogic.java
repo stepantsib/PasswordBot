@@ -22,26 +22,56 @@ public class PasswordLogic {
 
     /** Состояние: нет активного диалога */
     private static final int STATE_NONE = 0;
+
+    /** Состояние: ожидание ввода длины пароля */
     private static final int STATE_WAIT_LENGTH = 1;
+
+    /** Состояние: вопрос об использовании цифр */
     private static final int STATE_ASK_DIGITS = 2;
+
+    /** Состояние: вопрос об использовании заглавных букв */
     private static final int STATE_ASK_UPPER = 3;
+
+    /** Состояние: вопрос об использовании строчных букв */
     private static final int STATE_ASK_LOWER = 4;
+
+    /** Состояние: вопрос об использовании специальных символов */
     private static final int STATE_ASK_SPECIAL = 5;
 
-    /** Состояние: нет активного диалога менеджера */
+    /** Состояние: нет активного диалога менеджера паролей */
     private static final int PM_NONE = 0;
+
+    /** Состояние: ожидание ввода названия сервиса при добавлении */
     private static final int PM_ADD_WAIT_SERVICE = 1;
+
+    /** Состояние: ожидание ввода логина/email при добавлении */
     private static final int PM_ADD_WAIT_LOGIN = 2;
+
+    /** Состояние: выбор способа создания пароля при добавлении */
     private static final int PM_ADD_WAIT_METHOD = 3;
+
+    /** Состояние: ожидание ручного ввода пароля при добавлении */
     private static final int PM_ADD_WAIT_PASSWORD = 4;
+
+    /** Состояние: подтверждение удаления записи */
     private static final int PM_DELETE_CONFIRM = 5;
+
+    /** Состояние: выбор способа изменения пароля */
     private static final int PM_CHANGE_WAIT_METHOD = 6;
+
+    /** Состояние: ожидание ручного ввода нового пароля */
     private static final int PM_CHANGE_WAIT_PASSWORD = 7;
 
-    /** Строки для генерации пароля */
+    /** Строка с цифрами для генерации пароля */
     private static final String DIGITS = "0123456789";
+
+    /** Строка с заглавными буквами для генерации пароля */
     private static final String UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    /** Строка со строчными буквами для генерации пароля */
     private static final String LOWER = "abcdefghijklmnopqrstuvwxyz";
+
+    /** Строка со специальными символами для генерации пароля */
     private static final String SPECIAL = "!@#$%^&*()_-+=<>?/{}[]";
 
     /** Генератор случайных чисел */
@@ -52,6 +82,7 @@ public class PasswordLogic {
 
     /** База данных для хранения сервисов, логинов и паролей */
     private final PasswordDatabase database = new PasswordDatabase();
+
 
     /**
      * Настройки одного пользователя и состояния диалогов.

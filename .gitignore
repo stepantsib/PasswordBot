@@ -3,6 +3,7 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 .kotlin
+.db
 ### IntelliJ IDEA ###
 .idea/modules.xml
 .idea/encodings.xml
@@ -27,7 +28,6 @@ target/
 .settings
 .springBeans
 .sts4-cache
-.db
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
